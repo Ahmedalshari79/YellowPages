@@ -5,27 +5,20 @@ import pandas as pd
 # Load postcodes from CSV
 postcodes = pd.read_csv('postcodes.csv')
 
+# Limit the scraper to the first 10,000 rows
+postcodes = postcodes.iloc[:10000]
+
 # Function to sanitize suburb and state names for URLs
 def sanitize_input(suburb, state):
     suburb = suburb.lower().replace(' ', '-')
     state = state.lower()
     return suburb, state
 
-# Function to validate URLs before scraping
-def validate_url(url):
-    response = requests.head(url, headers={"User-Agent": "Mozilla/5.0"})
-    return response.status_code == 200
-
 # Function to scrape data from a valid URL
 def scrape_data(postcode, suburb, state):
     suburb, state = sanitize_input(suburb, state)
     url = f"https://www.yellowpages.com.au/find/restaurants/{suburb}-{state}-{postcode}"
     
-    # Validate URL
-    if not validate_url(url):
-        print(f"Invalid URL: {url}")
-        return [], url  # Return an empty list and the failed URL
-
     headers = {"User-Agent": "Mozilla/5.0"}
     response = requests.get(url, headers=headers)
 
@@ -51,44 +44,42 @@ def scrape_data(postcode, suburb, state):
         })
     return data, None  # Return the data and no failed URL
 
-# Batch processing parameters
-BATCH_SIZE = 50  # Number of rows to process in each batch
+# Fixed batch size for a single run
+BATCH_SIZE = 10000  # Adjust as needed
 output_file = 'restaurants.csv'  # Output file name
 
 # Initialize storage for failed URLs
 failed_urls = []
 
-# Loop through postcodes in batches
-for i in range(0, len(postcodes), BATCH_SIZE):
-    batch = postcodes.iloc[i:i + BATCH_SIZE]
-    batch_data = []
+# Process the batch
+batch_data = []
 
-    print(f"Processing batch {i // BATCH_SIZE + 1} ({i} to {i + len(batch) - 1})...")
+print(f"Processing a single batch of size {BATCH_SIZE}...")
 
-    for _, row in batch.iterrows():
-        print(f"Scraping data for {row['Suburb']} ({row['Postcode']})...")
-        try:
-            data, failed_url = scrape_data(row['Postcode'], row['Suburb'], row['State'])
-            batch_data.extend(data)
-            if failed_url:
-                failed_urls.append({
-                    'Suburb': row['Suburb'],
-                    'Postcode': row['Postcode'],
-                    'State': row['State'],
-                    'URL': failed_url
-                })
-        except Exception as e:
-            print(f"Error scraping data for {row['Suburb']} ({row['Postcode']}): {e}")
+for _, row in postcodes.iterrows():
+    print(f"Scraping data for {row['Suburb']} ({row['Postcode']})...")
+    try:
+        data, failed_url = scrape_data(row['Postcode'], row['Suburb'], row['State'])
+        batch_data.extend(data)
+        if failed_url:
             failed_urls.append({
                 'Suburb': row['Suburb'],
                 'Postcode': row['Postcode'],
                 'State': row['State'],
-                'URL': f"https://www.yellowpages.com.au/find/restaurants/{row['Suburb']}-{row['State']}-{row['Postcode']}"
+                'URL': failed_url
             })
+    except Exception as e:
+        print(f"Error scraping data for {row['Suburb']} ({row['Postcode']}): {e}")
+        failed_urls.append({
+            'Suburb': row['Suburb'],
+            'Postcode': row['Postcode'],
+            'State': row['State'],
+            'URL': f"https://www.yellowpages.com.au/find/restaurants/{row['Suburb']}-{row['State']}-{row['Postcode']}"
+        })
 
-    # Save batch data to the CSV file
-    pd.DataFrame(batch_data).to_csv(output_file, mode='a', header=not pd.io.common.file_exists(output_file), index=False)
-    print(f"Batch {i // BATCH_SIZE + 1} completed and saved.")
+# Save the data to the CSV file
+pd.DataFrame(batch_data).to_csv(output_file, index=False)
+print(f"Batch completed. Data saved to {output_file}")
 
 # Save failed URLs to a separate file
 if failed_urls:
