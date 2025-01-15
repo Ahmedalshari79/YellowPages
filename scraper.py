@@ -5,8 +5,8 @@ import pandas as pd
 # Load postcodes from CSV
 postcodes = pd.read_csv('postcodes.csv')
 
-# Limit the scraper to the first 10,000 rows
-postcodes = postcodes.iloc[:10000]
+# Limit the scraper to the second 10,000 rows
+postcodes = postcodes.iloc[10000:20000]
 
 # Function to sanitize suburb and state names for URLs
 def sanitize_input(suburb, state):
@@ -54,7 +54,7 @@ failed_urls = []
 # Process the batch
 batch_data = []
 
-print(f"Processing a single batch of size {BATCH_SIZE}...")
+print(f"Processing a fixed batch from row 10,000 to 20,000 {BATCH_SIZE}...")
 
 for _, row in postcodes.iterrows():
     print(f"Scraping data for {row['Suburb']} ({row['Postcode']})...")
