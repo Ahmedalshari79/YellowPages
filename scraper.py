@@ -5,15 +5,33 @@ import pandas as pd
 # Load postcodes from CSV
 postcodes = pd.read_csv('postcodes.csv')
 
-# Function to scrape data
+# Function to sanitize suburb and state names for URLs
+def sanitize_input(suburb, state):
+    suburb = suburb.lower().replace(' ', '-')
+    state = state.lower()
+    return suburb, state
+
+# Function to validate URLs before scraping
+def validate_url(url):
+    response = requests.head(url, headers={"User-Agent": "Mozilla/5.0"})
+    return response.status_code == 200
+
+# Function to scrape data from a valid URL
 def scrape_data(postcode, suburb, state):
-    url = f"https://www.yellowpages.com.au/find/restaurants/{suburb.lower().replace(' ', '-')}-{state.lower()}-{postcode}"
+    suburb, state = sanitize_input(suburb, state)
+    url = f"https://www.yellowpages.com.au/find/restaurants/{suburb}-{state}-{postcode}"
+    
+    # Validate URL
+    if not validate_url(url):
+        print(f"Invalid URL: {url}")
+        return [], url  # Return an empty list and the failed URL
+
     headers = {"User-Agent": "Mozilla/5.0"}
     response = requests.get(url, headers=headers)
 
     if response.status_code != 200:
-        print(f"Failed to scrape {url}: {response.status_code}")
-        return []
+        print(f"Failed to scrape {url}: HTTP {response.status_code}")
+        return [], url  # Return an empty list and the failed URL
 
     soup = BeautifulSoup(response.content, 'html.parser')
 
@@ -31,7 +49,7 @@ def scrape_data(postcode, suburb, state):
             'Suburb': suburb,
             'State': state
         })
-    return data
+    return data, None  # Return the data and no failed URL
 
 # Batch processing parameters
 BATCH_SIZE = 50  # Number of rows to process in each batch
@@ -50,13 +68,22 @@ for i in range(0, len(postcodes), BATCH_SIZE):
     for _, row in batch.iterrows():
         print(f"Scraping data for {row['Suburb']} ({row['Postcode']})...")
         try:
-            batch_data.extend(scrape_data(row['Postcode'], row['Suburb'], row['State']))
+            data, failed_url = scrape_data(row['Postcode'], row['Suburb'], row['State'])
+            batch_data.extend(data)
+            if failed_url:
+                failed_urls.append({
+                    'Suburb': row['Suburb'],
+                    'Postcode': row['Postcode'],
+                    'State': row['State'],
+                    'URL': failed_url
+                })
         except Exception as e:
             print(f"Error scraping data for {row['Suburb']} ({row['Postcode']}): {e}")
             failed_urls.append({
                 'Suburb': row['Suburb'],
                 'Postcode': row['Postcode'],
-                'State': row['State']
+                'State': row['State'],
+                'URL': f"https://www.yellowpages.com.au/find/restaurants/{row['Suburb']}-{row['State']}-{row['Postcode']}"
             })
 
     # Save batch data to the CSV file
